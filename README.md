@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,50:1e3a8a,100:0e7490&height=220&section=header&text=ISPFlow&fontSize=64&fontColor=38bdf8&fontAlignY=38&animation=fadeIn&desc=ISP%20Automation%20%26%20Network%20Operations%20Platform&descSize=18&descAlignY=60&descColor=e2e8f0" alt="ISPFlow" width="100%"/>
+<h1>ISPFlow</h1>
+
+<p><b>ISP Automation &amp; Network Operations Platform</b></p>
 
 <a href="https://github.com/Shivanand8546/ISP-Automation-System">
   <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=38BDF8&center=true&vCenter=true&width=720&height=45&lines=Automate+billing%2C+subscriptions+and+renewals;Monitor+devices+and+network+health+in+real+time;Resolve+tickets+and+incidents+within+SLA;Built+with+Node.js%2C+React%2C+PostgreSQL+and+Redis" alt="Typing animation" />
@@ -293,9 +295,3 @@ docker compose --profile monitoring up -d
 ## License
 
 No license has been specified yet. Add a `LICENSE` file to define how others may use this project.
-
-<div align="center">
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e7490,50:1e3a8a,100:0f172a&height=120&section=footer" alt="footer" width="100%"/>
-
-</div>
