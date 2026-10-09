@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="assets/banner.svg" alt="ISPFlow banner" width="100%"/>
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f172a,50:1e3a8a,100:0e7490&height=220&section=header&text=ISPFlow&fontSize=64&fontColor=38bdf8&fontAlignY=38&animation=fadeIn&desc=ISP%20Automation%20%26%20Network%20Operations%20Platform&descSize=18&descAlignY=60&descColor=e2e8f0" alt="ISPFlow" width="100%"/>
+
+<a href="https://github.com/Shivanand8546/ISP-Automation-System">
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=38BDF8&center=true&vCenter=true&width=720&height=45&lines=Automate+billing%2C+subscriptions+and+renewals;Monitor+devices+and+network+health+in+real+time;Resolve+tickets+and+incidents+within+SLA;Built+with+Node.js%2C+React%2C+PostgreSQL+and+Redis" alt="Typing animation" />
+</a>
 
 <br/>
 
@@ -10,8 +14,6 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma&logoColor=white)
-
-**ISP management, billing and network operations, automated end to end.**
 
 [Features](#features) · [Architecture](#architecture) · [Getting Started](#getting-started) · [API](#api-overview)
 
@@ -38,9 +40,25 @@ ISPFlow is a full-stack platform for running an Internet Service Provider. It br
 
 ## Architecture
 
-<p align="center">
-  <img src="assets/flow.svg" alt="ISPFlow architecture flow" width="100%"/>
-</p>
+```mermaid
+flowchart LR
+    U([Users<br/>Admin / Agent / Customer]) --> F[React + Vite<br/>Dashboard UI]
+    F -->|REST /api/v1| A[Express API]
+    F <-.->|Socket.IO| A
+    A --> DB[(PostgreSQL<br/>Prisma ORM)]
+    A --> R[(Redis<br/>Cache + BullMQ)]
+    R --> W[Workers<br/>Scheduler + Jobs]
+    W --> DB
+    W --> N[Notifications<br/>Email + Real-time]
+    N -.-> F
+
+    classDef ui fill:#0c4a6e,stroke:#38bdf8,color:#fff
+    classDef api fill:#4c1d95,stroke:#a78bfa,color:#fff
+    classDef data fill:#064e3b,stroke:#34d399,color:#fff
+    class U,F ui
+    class A,W,N api
+    class DB,R data
+```
 
 Requests flow from the React UI to the Express API, which reads and writes PostgreSQL through Prisma. Long-running and scheduled work is pushed to Redis-backed BullMQ queues and handled by workers, which in turn trigger notifications.
 
@@ -275,3 +293,9 @@ docker compose --profile monitoring up -d
 ## License
 
 No license has been specified yet. Add a `LICENSE` file to define how others may use this project.
+
+<div align="center">
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e7490,50:1e3a8a,100:0f172a&height=120&section=footer" alt="footer" width="100%"/>
+
+</div>
