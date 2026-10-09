@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.docker
+backend/.env
+frontend/dist/
+.DS_Store
+coverage/
+*.log

@@ -1,0 +1,803 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  SUPER_ADMIN
+  ISP_ADMIN
+  SUPPORT_AGENT
+  TECHNICIAN
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum ConnectionStatus {
+  PENDING
+  INSTALLATION_REQUIRED
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum PaymentStatus {
+  PENDING
+  AWAITING_VERIFICATION
+  SUCCESS
+  FAILED
+  EXPIRED
+  REFUNDED
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TicketCategory {
+  BILLING
+  TECHNICAL
+  INSTALLATION
+  COMPLAINT
+  GENERAL
+  NETWORK
+}
+
+enum InstallationStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum NetworkDeviceType {
+  ROUTER
+  OLT
+  SWITCH
+  ONU
+  ONT
+  ACCESS_POINT
+  FIREWALL
+  SERVER
+}
+
+enum NetworkDeviceStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+  DEGRADED
+  UNKNOWN
+}
+
+enum NetworkMetricSimStatus {
+  NORMAL
+  HIGH_LATENCY
+  HIGH_PACKET_LOSS
+  HIGH_CPU
+  HIGH_BANDWIDTH
+  OFFLINE
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationType {
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PLAN_EXPIRING
+  PLAN_EXPIRED
+  SERVICE_ACTIVATED
+  SERVICE_SUSPENDED
+  TICKET_CREATED
+  TICKET_ASSIGNED
+  TICKET_RESOLVED
+  NETWORK_INCIDENT
+  INCIDENT_RESOLVED
+  LOGIN_ALERT
+  RENEWAL_REMINDER
+  INVOICE_GENERATED
+  SYSTEM_ALERT
+  TECHNICIAN_ASSIGNED
+  INSTALLATION_COMPLETED
+}
+
+enum AutomationRuleType {
+  SUBSCRIPTION_EXPIRY_CHECK
+  RENEWAL_REMINDER
+  AUTO_SUSPEND
+  AUTO_ACTIVATE
+  TICKET_ESCALATION
+  NETWORK_ALERT
+  DEVICE_OFFLINE_ALERT
+  PAYMENT_REMINDER
+}
+
+enum AutomationRuleStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum TechnicianStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+  ON_LEAVE
+}
+
+// ==================== MODELS ====================
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  phone        String?    @unique
+  passwordHash String
+  name         String
+  role         Role       @default(CUSTOMER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  customer      Customer?
+  technician    Technician?
+  sessions      Session[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  idempotencyKeys IdempotencyKey[]
+  paymentsVerified Payment[] @relation("PaymentVerifiedBy")
+
+  @@index([email])
+  @@index([phone])
+  @@index([createdAt])
+  @@index([status])
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  refreshTokenHash String    @unique
+  device           String?
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastActivityAt   DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Customer {
+  id           String     @id @default(uuid())
+  customerCode String     @unique
+  userId       String     @unique
+  email        String     @unique
+  phone        String?
+  address      String?
+  city         String?
+  state        String?
+  pincode      String?
+  kyc          Json?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  user          User           @relation(fields: [userId], references: [id])
+  connections   Connection[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  invoices      Invoice[]
+  tickets       Ticket[]
+  installations Installation[]
+
+  @@index([customerCode])
+  @@index([email])
+  @@index([phone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("customers")
+}
+
+model Technician {
+  id          String           @id @default(uuid())
+  userId      String           @unique
+  name        String
+  phone       String           @unique
+  serviceArea String[]
+  status      TechnicianStatus @default(AVAILABLE)
+  maxWorkload Int              @default(10)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  user          User           @relation(fields: [userId], references: [id])
+  installations Installation[]
+  tickets       TicketAssignment[]
+  incidents     Incident[]
+
+  @@index([status])
+  @@index([serviceArea])
+  @@map("technicians")
+}
+
+model Plan {
+  id              String   @id @default(uuid())
+  name            String
+  speedMbps       Int
+  price           Decimal  @db.Decimal(10, 2)
+  billingCycleDays Int     @default(30)
+  dataLimitGb     Int?
+  installationFee Decimal  @default(0) @db.Decimal(10, 2)
+  activationFee   Decimal  @default(0) @db.Decimal(10, 2)
+  description     String?
+  features        String[]
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  subscriptions Subscription[]
+  connections   Connection[]
+
+  @@index([isActive])
+  @@map("plans")
+}
+
+model Connection {
+  id                  String           @id @default(uuid())
+  customerId          String
+  planId              String
+  installationAddress String
+  status              ConnectionStatus @default(INSTALLATION_REQUIRED)
+  activatedAt         DateTime?
+  suspendedAt         DateTime?
+  expiresAt           DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  customer      Customer       @relation(fields: [customerId], references: [id])
+  plan          Plan           @relation(fields: [planId], references: [id])
+  subscriptions Subscription[]
+  installation  Installation?
+
+  @@index([customerId])
+  @@index([status])
+  @@index([status, expiresAt])
+  @@map("connections")
+}
+
+model Subscription {
+  id           String             @id @default(uuid())
+  customerId   String
+  planId       String
+  connectionId String
+  status       SubscriptionStatus @default(PENDING)
+  startDate    DateTime?
+  endDate      DateTime?
+  autoRenew    Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  cancelledAt  DateTime?
+
+  customer              Customer              @relation(fields: [customerId], references: [id])
+  plan                  Plan                  @relation(fields: [planId], references: [id])
+  connection            Connection            @relation(fields: [connectionId], references: [id])
+  payments              Payment[]
+  invoices              Invoice[]
+  subscriptionHistory   SubscriptionHistory[]
+
+  @@index([customerId])
+  @@index([planId])
+  @@index([status])
+  @@index([startDate])
+  @@index([endDate])
+  @@index([status, endDate])
+  @@map("subscriptions")
+}
+
+model SubscriptionHistory {
+  id             String             @id @default(uuid())
+  subscriptionId String
+  previousStatus SubscriptionStatus?
+  newStatus      SubscriptionStatus
+  reason         String?
+  changedBy      String?
+  createdAt      DateTime           @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@index([createdAt])
+  @@map("subscription_history")
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  customerId       String
+  subscriptionId   String
+  amount           Decimal       @db.Decimal(10, 2)
+  currency         String        @default("INR")
+  status           PaymentStatus @default(PENDING)
+  provider         String        @default("MOCK")
+  providerOrderId  String?       @unique
+  providerPaymentId String?      @unique
+  transactionId    String?       @unique
+  providerRef      String?
+  utr              String?       @unique
+  utrSubmittedAt    DateTime?
+  verifiedById     String?
+  verifiedAt       DateTime?
+  failureReason    String?
+  expiresAt        DateTime?
+  paidAt           DateTime?
+  meta             Json?
+  idempotencyKey   String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  invoice      Invoice?
+  transactions PaymentTransaction[]
+  verifiedBy   User?        @relation("PaymentVerifiedBy", fields: [verifiedById], references: [id])
+
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([providerOrderId])
+  @@index([providerPaymentId])
+  @@index([utr])
+  @@index([verifiedById])
+  @@index([status, expiresAt])
+  @@index([createdAt])
+  @@index([transactionId])
+  @@index([status, createdAt])
+  @@index([provider, status])
+  @@map("payments")
+}
+
+model PaymentTransaction {
+  id         String        @id @default(uuid())
+  paymentId  String
+  type       String
+  amount     Decimal       @db.Decimal(10, 2)
+  status     PaymentStatus
+  providerRef String?
+  meta       Json?
+  createdAt  DateTime      @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([paymentId])
+  @@index([createdAt])
+  @@index([status])
+  @@map("payment_transactions")
+}
+
+model ProviderWebhookEvent {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  provider    String
+  type        String
+  payload     Json
+  receivedAt  DateTime @default(now())
+  processedAt DateTime?
+
+  @@index([provider, type])
+  @@index([receivedAt])
+  @@map("provider_webhook_events")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  paymentId     String        @unique
+  subscriptionId String
+  customerId    String
+  amount        Decimal       @db.Decimal(10, 2)
+  tax           Decimal       @db.Decimal(10, 2) @default(0)
+  total         Decimal       @db.Decimal(10, 2)
+  status        InvoiceStatus @default(UNPAID)
+  dueDate       DateTime
+  paidAt        DateTime?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  payment      Payment      @relation(fields: [paymentId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  customer     Customer     @relation(fields: [customerId], references: [id])
+
+  @@index([customerId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("invoices")
+}
+
+model Installation {
+  id                  String             @id @default(uuid())
+  customerId          String
+  connectionId        String             @unique
+  address             String
+  preferredDate       DateTime?
+  assignedTechnicianId String?
+  status              InstallationStatus @default(PENDING)
+  notes               String?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  customer           Customer    @relation(fields: [customerId], references: [id])
+  connection         Connection  @relation(fields: [connectionId], references: [id])
+  assignedTechnician Technician? @relation(fields: [assignedTechnicianId], references: [id])
+
+  @@index([customerId])
+  @@index([assignedTechnicianId])
+  @@index([status])
+  @@index([preferredDate])
+  @@map("installations")
+}
+
+model Ticket {
+  id          String         @id @default(uuid())
+  ticketNumber String        @unique
+  customerId  String
+  title       String
+  description String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  category    TicketCategory @default(GENERAL)
+  slaDeadline DateTime?
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  customer    Customer           @relation(fields: [customerId], references: [id])
+  comments    TicketComment[]
+  assignments TicketAssignment[]
+  escalations TicketEscalation[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([priority])
+  @@index([createdAt])
+  @@index([status, priority, createdAt])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  userId    String
+  content   String
+  isInternal Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("ticket_comments")
+}
+
+model TicketAssignment {
+  id           String   @id @default(uuid())
+  ticketId     String
+  technicianId String
+  assignedBy   String?
+  assignedAt   DateTime @default(now())
+  unassignedAt DateTime?
+  isActive     Boolean  @default(true)
+  notes        String?
+
+  ticket     Ticket     @relation(fields: [ticketId], references: [id])
+  technician Technician @relation(fields: [technicianId], references: [id])
+
+  @@index([ticketId])
+  @@index([technicianId])
+  @@map("ticket_assignments")
+}
+
+model TicketEscalation {
+  id           String   @id @default(uuid())
+  ticketId     String
+  escalatedTo  String
+  escalatedBy  String?
+  reason       String
+  createdAt    DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_escalations")
+}
+
+model NetworkDevice {
+  id          String              @id @default(uuid())
+  deviceCode  String              @unique
+  name        String
+  ipAddress   String              @unique
+  type        NetworkDeviceType
+  vendor      String?
+  model       String?
+  location    String?
+  description String?
+  status      NetworkDeviceStatus @default(UNKNOWN)
+  simStatus   NetworkMetricSimStatus @default(NORMAL)
+  lastSeen    DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  deletedAt   DateTime?
+
+  metrics   NetworkMetric[]
+  incidents Incident[]
+  interfaces NetworkInterface[]
+
+  @@index([deviceCode])
+  @@index([ipAddress])
+  @@index([status])
+  @@index([type])
+  @@index([lastSeen])
+  @@index([status, lastSeen])
+  @@map("network_devices")
+}
+
+model NetworkInterface {
+  id          String   @id @default(uuid())
+  deviceId    String
+  name        String
+  macAddress  String?
+  speed       Int?
+  isUp        Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  device NetworkDevice @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId])
+  @@map("network_interfaces")
+}
+
+model NetworkMetric {
+  id            String   @id @default(uuid())
+  deviceId      String
+  cpuPercent    Float?
+  memoryPercent Float?
+  bandwidthIn   Float?
+  bandwidthOut  Float?
+  latencyMs     Float?
+  packetLoss    Float?
+  uptime        Int?
+  recordedAt    DateTime @default(now())
+
+  device NetworkDevice @relation(fields: [deviceId], references: [id])
+
+  @@index([deviceId])
+  @@index([recordedAt])
+  @@index([deviceId, recordedAt])
+  @@map("network_metrics")
+}
+
+model Incident {
+  id          String           @id @default(uuid())
+  deviceId    String?
+  title       String
+  description String?
+  status      IncidentStatus   @default(OPEN)
+  severity    IncidentSeverity @default(MEDIUM)
+  affectedArea String?
+  technicianId String?
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  device     NetworkDevice? @relation(fields: [deviceId], references: [id])
+  technician Technician?   @relation(fields: [technicianId], references: [id])
+  updates    IncidentUpdate[]
+
+  @@index([deviceId])
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([status, severity])
+  @@map("incidents")
+}
+
+model IncidentUpdate {
+  id         String   @id @default(uuid())
+  incidentId String
+  message    String
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+
+  incident Incident @relation(fields: [incidentId], references: [id])
+
+  @@index([incidentId])
+  @@map("incident_updates")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  meta      Json?
+  createdAt DateTime         @default(now())
+  readAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
+}
+
+model AutomationRule {
+  id          String               @id @default(uuid())
+  name        String
+  type        AutomationRuleType
+  status      AutomationRuleStatus @default(ACTIVE)
+  config      Json
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  runCount    Int                  @default(0)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  logs AutomationLog[]
+
+  @@index([type])
+  @@index([status])
+  @@map("automation_rules")
+}
+
+model AutomationLog {
+  id          String   @id @default(uuid())
+  ruleId      String
+  status      String
+  message     String?
+  meta        Json?
+  executedAt  DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id])
+
+  @@index([ruleId])
+  @@index([executedAt])
+  @@map("automation_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  userEmail  String?
+  action     String
+  entityType String?
+  entityId   String?
+  meta       Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model IdempotencyKey {
+  id             String            @id @default(uuid())
+  key            String
+  userId         String
+  endpoint       String
+  method         String
+  requestHash    String
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime          @default(now())
+  expiresAt      DateTime
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, key])
+  @@index([key])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+model ServiceStatusHistory {
+  id          String   @id @default(uuid())
+  entityType  String
+  entityId    String
+  fromStatus  String
+  toStatus    String
+  reason      String?
+  changedBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("service_status_history")
+}
